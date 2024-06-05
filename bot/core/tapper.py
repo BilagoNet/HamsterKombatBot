@@ -303,7 +303,24 @@ class Tapper:
             logger.info(f"{self.session_name} | Proxy IP: {ip}")
         except Exception as error:
             logger.error(f"{self.session_name} | Proxy: {proxy} | Error: {error}")
+            
+    
+    async def apply_daily_cipher(self, http_client: aiohttp.ClientSession, cipher: str) -> bool:
+        try:
+            response = await http_client.post(url='https://api.hamsterkombat.io/clicker/claim-daily-cipher',
+                                              json={'cipher': cipher})
+            response_text = await response.text()
+            response.raise_for_status()
 
+            return True
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error while Apply Daily Cipher: {error} | "
+                         f"Response text: {escape_html(response_text)}")
+            await asyncio.sleep(delay=3)
+
+            return False
+
+    
     async def run(self, proxy: str | None) -> None:
         access_token_created_time = 0
         turbo_time = 0
@@ -331,7 +348,7 @@ class Tapper:
                     access_token_created_time = time()
 
                     await self.get_me_telegram(http_client=http_client)
-                    await self.get_config(http_client=http_client)
+                    config = await self.get_config(http_client=http_client)
 
                     profile_data = await self.get_profile_data(http_client=http_client)
 
@@ -365,6 +382,20 @@ class Tapper:
                                            f"Days: <m>{days}</m> | Reward coins: {rewards[days - 1]['rewardCoins']}")
 
                     await asyncio.sleep(delay=2)
+
+                    get_daily_cipher = config['dailyCipher']
+                    remainSeconds = int(get_daily_cipher['remainSeconds'])
+
+                    if time() - remainSeconds >= 0 and get_daily_cipher['isClaimed'] is False:
+                        cipher = get_daily_cipher['cipher']
+                        decoded_cipher = cipher_decode(cipher)
+                        status = await self.apply_daily_cipher(http_client=http_client, cipher=decoded_cipher)
+                        
+                        if status is True:
+                            logger.success(f"{self.session_name} | Successfully apply daily cipher | Today Ciper: {decoded_cipher}")
+                        else:
+                            logger.error(f"{self.session_name} | Error while apply daily cipher")
+                            await asyncio.sleep(delay=3)
 
                     exchange_id = profile_data.get('exchangeId')
                     if not exchange_id:
